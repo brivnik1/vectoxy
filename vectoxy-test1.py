@@ -8,18 +8,49 @@ def extract_coordinates_from_svg(svg_file, flatten_tolerance=5):
     with open(svg_file, "r", encoding="utf-8") as f:
         content = f.read()
     
-    soup = BeautifulSoup(content, "xml")
+soup = BeautifulSoup(content, "lxml-xml")
     x_coords, y_coords = [], []
     
+    # Extract from <path>
     for path in soup.find_all("path"):
         d = path.get("d", "")
         parsed_path = parse_path(d)
-        
         for segment in parsed_path:
             points = segment.point(np.linspace(0, 1, flatten_tolerance))
             for point in points:
                 x_coords.append(point.real)
                 y_coords.append(point.imag)
+    
+    # Extract from <rect>
+    for rect in soup.find_all("rect"):
+        x, y = float(rect.get("x", 0)), float(rect.get("y", 0))
+        width, height = float(rect.get("width", 0)), float(rect.get("height", 0))
+        
+        rect_points = [
+            (x, y), (x + width, y), (x + width, y + height), (x, y + height), (x, y)
+        ]
+        for px, py in rect_points:
+            x_coords.append(px)
+            y_coords.append(py)
+    
+    # Extract from <circle> & <ellipse>
+    for circle in soup.find_all(["circle", "ellipse"]):
+        cx, cy = float(circle.get("cx", 0)), float(circle.get("cy", 0))
+        rx = float(circle.get("rx", circle.get("r", 0)))
+        ry = float(circle.get("ry", circle.get("r", 0)))
+        
+        for angle in np.linspace(0, 2 * np.pi, flatten_tolerance):
+            x_coords.append(cx + rx * np.cos(angle))
+            y_coords.append(cy + ry * np.sin(angle))
+    
+    # Extract from <polygon> & <polyline>
+    for poly in soup.find_all(["polygon", "polyline"]):
+        points = poly.get("points", "").strip()
+        point_list = [tuple(map(float, p.split(","))) for p in points.split() if "," in p]
+        
+        for px, py in point_list:
+            x_coords.append(px)
+            y_coords.append(py)
     
     return np.array(x_coords), np.array(y_coords)
 
@@ -63,4 +94,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

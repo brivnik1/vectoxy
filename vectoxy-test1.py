@@ -1,18 +1,10 @@
 import streamlit as st
 import numpy as np
-import subprocess
-import os
-import tempfile
 from bs4 import BeautifulSoup
 import re
+from svgpathtools import parse_path
 
-def run_inkscape_conversion(svg_path, flatten_tolerance):
-    """Runs Inkscape to convert objects to paths and flatten Beziers."""
-    temp_svg = tempfile.NamedTemporaryFile(delete=False, suffix=".svg").name
-    subprocess.run(["inkscape", svg_path, "--export-plain-svg", "--export-filename", temp_svg], check=True)
-    return temp_svg
-
-def extract_coordinates_from_svg(svg_file):
+def extract_coordinates_from_svg(svg_file, flatten_tolerance=5):
     with open(svg_file, "r", encoding="utf-8") as f:
         content = f.read()
     
@@ -21,11 +13,13 @@ def extract_coordinates_from_svg(svg_file):
     
     for path in soup.find_all("path"):
         d = path.get("d", "")
-        matches = re.findall(r'([ML])\s*(-?\d*\.?\d+),(-?\d*\.?\d+)', d)
+        parsed_path = parse_path(d)
         
-        for cmd, x, y in matches:
-            x_coords.append(float(x))
-            y_coords.append(float(y))
+        for segment in parsed_path:
+            points = segment.point(np.linspace(0, 1, flatten_tolerance))
+            for point in points:
+                x_coords.append(point.real)
+                y_coords.append(point.imag)
     
     return np.array(x_coords), np.array(y_coords)
 
@@ -44,22 +38,21 @@ def save_to_file(filename, data):
         f.write("\n".join(map(str, data)))
 
 def main():
-    st.title("Vector to Coordinate Converter")
+    st.title("Vector to Coordinate Converter (Pure Python)")
     
     uploaded_file = st.file_uploader("Upload an SVG file", type=["svg"])
-    flatten_tolerance = st.slider("Bezier Flattening Strength", 1, 10, 5)
+    flatten_tolerance = st.slider("Bezier Flattening Strength", 1, 20, 5)
     
     if uploaded_file is not None:
-        temp_svg_path = os.path.join(tempfile.gettempdir(), uploaded_file.name)
+        temp_svg_path = f"/tmp/{uploaded_file.name}"
         with open(temp_svg_path, "wb") as f:
             f.write(uploaded_file.getbuffer())
         
-        processed_svg = run_inkscape_conversion(temp_svg_path, flatten_tolerance)
-        x_coords, y_coords = extract_coordinates_from_svg(processed_svg)
+        x_coords, y_coords = extract_coordinates_from_svg(temp_svg_path, flatten_tolerance)
         x_coords, y_coords = normalize_coordinates(x_coords, y_coords)
         
-        output_x = os.path.join(tempfile.gettempdir(), "optimized_x.txt")
-        output_y = os.path.join(tempfile.gettempdir(), "optimized_y.txt")
+        output_x = f"/tmp/optimized_x.txt"
+        output_y = f"/tmp/optimized_y.txt"
         
         save_to_file(output_x, x_coords)
         save_to_file(output_y, y_coords)
@@ -70,3 +63,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

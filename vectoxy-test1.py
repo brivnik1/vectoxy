@@ -8,7 +8,7 @@ def extract_coordinates_from_svg(svg_file, flatten_tolerance=5):
     with open(svg_file, "r", encoding="utf-8") as f:
         content = f.read()
     
-soup = BeautifulSoup(content, "lxml-xml")
+    soup = BeautifulSoup(content, "lxml-xml")
     x_coords, y_coords = [], []
     
     # Extract from <path>
